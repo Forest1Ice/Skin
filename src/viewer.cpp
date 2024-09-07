@@ -378,7 +378,8 @@ QPaintEngine* Viewer::paintEngine() const
 
 void Viewer::open()
 {
-    QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "", tr("Step Files (*.stp *.step);;All Files (*)"));
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"), "", 
+        tr("All Files (*);;Step Files (*.stp *.step);;Iges Files(*.igs *.iges)"));
     if (fileName.isEmpty())
     {
         return;
@@ -387,7 +388,7 @@ void Viewer::open()
 
     // read step file
     Handle(TopTools_HSequenceOfShape) hSequenceOfShape = new TopTools_HSequenceOfShape();
-    auto status = io::readStep(filename_s.c_str(), hSequenceOfShape);
+    io::readModel(filename_s.c_str(), hSequenceOfShape);
 
     this->clear();
 
@@ -437,7 +438,7 @@ void Viewer::skin()
     }
 
     // skin
-    int degree = 2;
+    int degree = 3;
     Skin skin(m_bsplineCurves, degree);
     skin.skin();
     Handle(Geom_BSplineSurface) surface = skin.getSurface();

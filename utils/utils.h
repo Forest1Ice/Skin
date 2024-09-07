@@ -52,12 +52,12 @@ namespace util
 namespace io
 {
 	// read step file and save models
-	IFSelect_ReturnStatus readStep(const Standard_CString filename, Handle(TopTools_HSequenceOfShape)& hSequenceOfShape);
+	void readModel(const Standard_CString filename, Handle(TopTools_HSequenceOfShape)& hSequenceOfShape);
 
 	/*
 	 * translate models and save step file
 	 **/
-	IFSelect_ReturnStatus saveStep(const Standard_CString filename,
+	void saveStep(const Standard_CString filename,
 		const Handle(TopTools_HSequenceOfShape)& hSequenceOfShape,
 		const STEPControl_StepModelType mode);
 };

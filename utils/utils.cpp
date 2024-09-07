@@ -1,6 +1,7 @@
 #include "utils.h"
 
 #include <algorithm>
+#include <string>
 #include <Eigen/Dense>
 #include <BSplCLib.hxx>
 #include <TopExp_Explorer.hxx>
@@ -8,6 +9,11 @@
 #include <BRep_Tool.hxx>
 #include <STEPControl_Reader.hxx>
 #include <STEPControl_Writer.hxx>
+#include <IGESControl_Reader.hxx>
+#include <IGESControl_Writer.hxx>
+#include <StlAPI_Reader.hxx>
+#include <BRep_Builder.hxx>
+#include <BRepTools.hxx>
 #include <XSControl_WorkSession.hxx>
 #include <XSControl_TransferReader.hxx>
 #include <Transfer_TransientProcess.hxx>
@@ -210,45 +216,95 @@ bool util::convertToBSplineCurve(const TopoDS_Shape& shape, TopoDS_Edge& edge, H
 	return true;
 }
 
-IFSelect_ReturnStatus io::readStep(const Standard_CString filename, Handle(TopTools_HSequenceOfShape)& hSequenceOfShape)
+void io::readModel(const Standard_CString filename, Handle(TopTools_HSequenceOfShape)& hSequenceOfShape)
 {
 	hSequenceOfShape->Clear();
+	std::string fileStr(filename);
+	std::string extension = fileStr.substr(fileStr.find_last_of('.') + 1);
+	std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower); // convert to lower case
 
-	// read step file and return status
-	STEPControl_Reader reader;
-	IFSelect_ReturnStatus status = reader.ReadFile(filename);
-	if (status != IFSelect_RetDone)
-		return status;
-	// set trace level for outputting messages
-	reader.WS()->TransferReader()->TransientProcess()->SetTraceLevel(2);
-	Standard_Boolean failsonly = Standard_False;
-	// check loaded data
-	reader.PrintCheckLoad(failsonly, IFSelect_ItemsByEntity);
+	IFSelect_ReturnStatus status = IFSelect_RetError;
 
-	// convert step file
-	Standard_Integer nbr = reader.NbRootsForTransfer();
-	reader.PrintCheckTransfer(failsonly, IFSelect_ItemsByEntity);
-	for (Standard_Integer i = 1; i <= nbr; ++i)
+	if (extension == "step" || extension == "stp")
 	{
-		reader.TransferRoot(i);
-	}
+		// read step file
+		STEPControl_Reader reader;
+		status = reader.ReadFile(filename);
+		if (status != IFSelect_RetDone)
+		{ 
+			return;
+		}
+			
+		// set trace level for outputting messages
+		reader.WS()->TransferReader()->TransientProcess()->SetTraceLevel(2);
+		Standard_Boolean failsonly = Standard_False;
+		// check loaded data
+		reader.PrintCheckLoad(failsonly, IFSelect_ItemsByEntity);
 
-	// number of read models
-	Standard_Integer nbs = reader.NbShapes();
-	if (nbs == 0)
-	{
-		return IFSelect_RetVoid;
-	}
-	// save read models
-	for (Standard_Integer i = 1; i <= nbs; ++i)
-	{
-		hSequenceOfShape->Append(reader.Shape(i));
-	}
+		// convert step file
+		Standard_Integer nbr = reader.NbRootsForTransfer();
+		reader.PrintCheckTransfer(failsonly, IFSelect_ItemsByEntity);
+		for (Standard_Integer i = 1; i <= nbr; ++i)
+		{
+			reader.TransferRoot(i);
+		}
 
-	return status;
+		// number of read models
+		Standard_Integer nbs = reader.NbShapes();
+		if (nbs == 0)
+		{
+			return;
+		}
+		// save read models
+		for (Standard_Integer i = 1; i <= nbs; ++i)
+		{
+			hSequenceOfShape->Append(reader.Shape(i));
+		}
+	}
+	else if (extension == "iges" || extension == "igs")
+	{
+		IGESControl_Reader reader;
+		status = reader.ReadFile(filename);
+		if (status != IFSelect_RetDone) 
+		{
+			return;
+		}
+
+		reader.TransferRoots();
+		Standard_Integer nbs = reader.NbShapes();
+		for (Standard_Integer i = 1; i <= nbs; ++i) 
+		{
+			hSequenceOfShape->Append(reader.Shape(i));
+		}
+	}
+	else if (extension == "stl")
+	{
+		StlAPI_Reader reader;
+		TopoDS_Shape shape;
+		if (!reader.Read(shape, filename)) {
+			return;
+		}
+		hSequenceOfShape->Append(shape);
+	}
+	else if (extension == "brep") 
+	{
+		TopoDS_Shape shape;
+		std::ifstream brep_file(filename);
+		if (!brep_file) 
+		{
+			return;
+		}
+		BRepTools::Read(shape, brep_file, BRep_Builder());
+		hSequenceOfShape->Append(shape);
+	}
+	else 
+	{
+		std::cerr << "Unsupported file format: " << extension << std::endl;
+		return;
+	}
 }
 
-IFSelect_ReturnStatus io::saveStep(const Standard_CString filename, const Handle(TopTools_HSequenceOfShape)& hSequenceOfShape, const STEPControl_StepModelType mode)
+void io::saveStep(const Standard_CString filename, const Handle(TopTools_HSequenceOfShape)& hSequenceOfShape, const STEPControl_StepModelType mode)
 {
 	STEPControl_Writer writer;
 	IFSelect_ReturnStatus status;
@@ -257,10 +313,9 @@ IFSelect_ReturnStatus io::saveStep(const Standard_CString filename, const Handle
 		status = writer.Transfer(hSequenceOfShape->Value(i), mode);
 		if (status != IFSelect_RetDone)
 		{
-			return status;
+			return;
 		}
 	}
 
-	status = writer.Write(filename);
-	return status;
+	writer.Write(filename);
 }

@@ -1,5 +1,6 @@
 #include "skin.h"
 
+#include <map>
 #include <Standard_Failure.hxx>
 
 Skin::Skin(const std::vector<Handle(Geom_BSplineCurve)>& curves, int degree)
@@ -8,24 +9,45 @@ Skin::Skin(const std::vector<Handle(Geom_BSplineCurve)>& curves, int degree)
 	m_multsU{ 1, curves.empty() ? 1 : curves[0]->Multiplicities().Length() } // Initialize m_multsU with appropriate size
 {
 	if (curves.empty()) {
-		throw Standard_Failure("Curves vector is empty!");
+		try 
+		{
+			throw Standard_Failure("Curves vector is empty!");
+		}
+		catch (Standard_Failure& failure) 
+		{
+			std::cerr << "Caught error: " << failure.GetMessageString() << std::endl;
+		}
 	}
 
 	if (m_degreeV >= m_numCurves)
 	{
-		throw Standard_Failure("Invalid argument m_degreeV!");
+		try
+		{
+			throw Standard_Failure("Invalid argument m_degreeV!");
+		}
+		catch (Standard_Failure& failure)
+		{
+			std::cerr << "Caught error: " << failure.GetMessageString() << std::endl;
+		}
 	}
 
-	// suppose the degrees and knot vectors of different splines are the same
-	m_degreeU = curves[0]->Degree();
-	m_knotsU = curves[0]->Knots();
-	m_multsU = curves[0]->Multiplicities();
-	m_numControlPointsU = curves[0]->NbPoles();
+	// Increase Degree
+	std::vector<Handle(Geom_BSplineCurve)> newCurves = curves;
+	increaseDegree(newCurves);
+
+	// Knot refinements
+	refineKnots(newCurves);
+
+	// Now the degrees and knot sequences of different curves are the same
+	m_degreeU = newCurves[0]->Degree();
+	m_knotsU = newCurves[0]->Knots();
+	m_multsU = newCurves[0]->Multiplicities();
+	m_numControlPointsU = newCurves[0]->NbPoles();
 
 	std::vector<TColgp_Array1OfPnt> controlPointsU(m_numCurves, TColgp_Array1OfPnt(1, m_numControlPointsU));
 	for (int i = 0; i < m_numCurves; ++i)
 	{
-		controlPointsU[i] = curves[i]->Poles();
+		controlPointsU[i] = newCurves[i]->Poles();
 	}
 
 	m_ControlPointsV.resize(m_numControlPointsU, TColgp_Array1OfPnt(1, m_numCurves));
@@ -45,6 +67,74 @@ void Skin::skin()
 
 	// construct generated B-spline skin surface
 	constructSurface();
+}
+
+void Skin::increaseDegree(std::vector<Handle(Geom_BSplineCurve)>& curves)
+{
+	Standard_Integer maxDegree = 0;
+	for (auto curve : curves)
+	{
+		maxDegree = maxDegree < curve->Degree() ? curve->Degree() : maxDegree;
+	}
+
+	for (auto curve : curves)
+	{
+		curve->IncreaseDegree(maxDegree);
+	}
+}
+
+void Skin::refineKnots(std::vector<Handle(Geom_BSplineCurve)>& curves)
+{
+	// Suppose each curve is defined in the same knot interval, such as [0,1].
+	
+	// Merge knots of all curves to obtain a common knot sequence and mult sequence.
+	// Store knots and corresponding maximum mutiplicities with map.
+	std::map<Standard_Real, Standard_Integer> knotMap;
+
+	for (auto& curve : curves)
+	{
+		// Obtain the knots and multiplicities.
+		TColStd_Array1OfReal curveKnots = curve->Knots();
+		TColStd_Array1OfInteger curveMults = curve->Multiplicities();
+
+		for (Standard_Integer i = curveKnots.Lower(); i <= curveKnots.Upper(); ++i)
+		{
+			Standard_Real knot = curveKnots.Value(i);
+			Standard_Integer mult = curveMults.Value(i);
+
+			// If knot is existent, update its maximum mult.
+			if (knotMap.find(knot) != knotMap.end())
+			{
+				knotMap[knot] = std::max(knotMap[knot], mult);
+			}
+			else
+			{
+				// The knot is not in map, insert it and its mult.
+				knotMap[knot] = mult;
+			}
+		}
+	}
+
+	// Now knotMap stores all emerging knots and their maximum mults.
+	// Note that map sort automatically according to key values, i.e. knot values here.
+	Standard_Integer nbKnots = static_cast<Standard_Integer>(knotMap.size());
+	TColStd_Array1OfReal knots = TColStd_Array1OfReal(1, nbKnots);
+	TColStd_Array1OfInteger mults = TColStd_Array1OfInteger(1, nbKnots);
+
+	// Copy the values in knotMap into knots and mults.
+	Standard_Integer index = 1;
+	for (const auto& [knot, mult] : knotMap)
+	{
+		knots.SetValue(index, knot);
+		mults.SetValue(index, mult);
+		++index;
+	}
+
+	// Refinement for all curves.
+	for (auto& curve : curves)
+	{
+		curve->InsertKnots(knots, mults);
+	}
 }
 
 void Skin::calculate()

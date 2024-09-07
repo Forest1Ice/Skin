@@ -17,6 +17,12 @@ public:
 	const Handle(Geom_BSplineSurface) getSurface() const;
 
 private:
+	// increase the degrees of all curves to the same
+	void increaseDegree(std::vector<Handle(Geom_BSplineCurve)>& curves);
+
+	// refine the knots of all curves to the same
+	void refineKnots(std::vector<Handle(Geom_BSplineCurve)>& curves);
+
 	// calculate parameters and knot vector at v direction
 	void calculate();
 
