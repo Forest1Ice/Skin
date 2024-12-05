@@ -442,14 +442,6 @@ void Viewer::skin()
     Skin skin(m_bsplineCurves, degree);
     skin.skin();
     Handle(Geom_BSplineSurface) surface = skin.getSurface();
-    if (!surface.IsNull())
-    {
-        std::cout << "successful!" << std::endl;
-    }
-    else
-    {
-        std::cout << "failed!" << std::endl;
-    }
     TopoDS_Shape face = BRepBuilderAPI_MakeFace(surface, Precision::Confusion());
 
     this->operator<<(face);
